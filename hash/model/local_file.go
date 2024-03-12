@@ -2,15 +2,15 @@ package model
 
 type LocalFile struct {
 	pathInsideDirectory string
-	azureMd5            string
+	base64Md5           string
 }
 
 func NewLocalFile(
 	pathInsideDirectory string,
-	azureMd5 string) *LocalFile {
+	base64Md5 string) *LocalFile {
 	return &LocalFile{
 		pathInsideDirectory: pathInsideDirectory,
-		azureMd5:            azureMd5,
+		base64Md5:           base64Md5,
 	}
 }
 
@@ -18,6 +18,6 @@ func (x *LocalFile) PathInsideDirectory() string {
 	return x.pathInsideDirectory
 }
 
-func (x *LocalFile) AzureMd5() string {
-	return x.azureMd5
+func (x *LocalFile) Base64Md5() string {
+	return x.base64Md5
 }

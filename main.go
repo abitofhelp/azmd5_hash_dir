@@ -22,18 +22,20 @@ import (
 	"path/filepath"
 )
 
+const kPathsChannelSize = 10
+const kLocalFilesChannelSize = 10
 const kTimeout = 30 * time.Second
 
 func WalkDirectoryWithChannel(
 	ctx context.Context,
-	root string,
+	dir string,
 	excludeDirs mapset.Set[string],
 	excludeFiles mapset.Set[string],
 	paths chan<- string) error {
 	cnt := 0
-	if err := fs.WalkDir(os.DirFS(root), ".", func(p string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(os.DirFS(dir), ".", func(p string, d fs.DirEntry, err error) error {
 
-		filePath := root + "/" + p
+		filePath := dir + "/" + p
 
 		if err != nil {
 			return fmt.Errorf("failed to walk the directory '%s': %w", filePath, err)
@@ -65,40 +67,33 @@ func WalkDirectoryWithChannel(
 	}); err == nil {
 		return nil
 	} else {
-		return fmt.Errorf("failed to walk the directory '%s': %w", root, err)
+		return fmt.Errorf("failed to walk the directory '%s': %w", dir, err)
 	}
 }
 
-func main() {
-	root := "/Users/mike/Downloads/clients/alm"
-	excludeDirs := mapset.NewSet[string]()
-	excludeDirs.Add("assets")
-	excludeDirs.Add("aerials")
-	excludeDirs.Add("projects")
+func BuildLocalFileHashes(
+	eqctx context.Context,
+	dir string,
+	excludeDirs mapset.Set[string],
+	excludeFiles mapset.Set[string],
+	eg *errgroup.Group) ([]*model.LocalFile, error) {
 
-	excludeFiles := mapset.NewSet[string]()
-	excludeFiles.Add(".DS_Store")
+	paths := make(chan string, kPathsChannelSize)
 
-	// find all files
-	ctx, cancel := context.WithTimeout(context.Background(), kTimeout)
-	eg, eqctx := errgroup.WithContext(ctx)
-	paths := make(chan string, runtime.NumCPU())
-
-	start := time.Now()
-	// Producer: Get the paths to the files of interest within the root directory.
+	// Producer: Get the paths to the files of interest within the dir directory.
 	eg.Go(func() error {
 		defer close(paths)
-		if err := WalkDirectoryWithChannel(eqctx, root, excludeDirs, excludeFiles, paths); err == nil {
+		if err := WalkDirectoryWithChannel(eqctx, dir, excludeDirs, excludeFiles, paths); err == nil {
 			return nil
 		} else {
-			return fmt.Errorf("failed to walk through directory '%s': %w", root, err)
+			return fmt.Errorf("failed to walk through directory '%s': %w", dir, err)
 		}
 	})
 
 	// Consumer: Hash the files
-	localFiles := make(chan *model.LocalFile, 10)
-	workers := int64(runtime.NumCPU())
-	cnt := -0
+	localFiles := make(chan *model.LocalFile, kLocalFilesChannelSize)
+	workers := int64(runtime.NumCPU() / 2)
+	cnt := 0
 	for i := int64(0); i < workers; i++ {
 		eg.Go(func() error {
 
@@ -111,12 +106,12 @@ func main() {
 
 			for p := range paths {
 				// Calculate the base64 MD5 hash of the file.
-				fullPath := filepath.Join(root, p)
-				if azureMd5, err := md5.GenMd5HashAsBase64(fullPath); err == nil {
+				fullPath := filepath.Join(dir, p)
+				if base64Md5, err := md5.GenMd5HashAsBase64(fullPath); err == nil {
 					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case localFiles <- model.NewLocalFile(p, azureMd5):
+					case <-eqctx.Done():
+						return eqctx.Err()
+					case localFiles <- model.NewLocalFile(p, base64Md5):
 						cnt++
 						fmt.Printf("hashcnt: %d\n", cnt)
 					}
@@ -143,15 +138,43 @@ func main() {
 	})
 
 	if err := eg.Wait(); err == nil {
+		return hashes, nil
+	} else {
+		return nil, fmt.Errorf("failed to generate hashes for directory '%s': %w", dir, err)
+	}
+}
+
+// //////////////////////////////////////////////////////////////////////////////
+// M  A  I  N  L  I  N  E
+// //////////////////////////////////////////////////////////////////////////////
+func main() {
+	dir := "/Users/mike/Downloads/clients/alm"
+
+	excludeDirs := mapset.NewSet[string]()
+	excludeDirs.Add("assets")
+	excludeDirs.Add("aerials")
+	excludeDirs.Add("projects")
+
+	excludeFiles := mapset.NewSet[string]()
+	excludeFiles.Add(".DS_Store")
+
+	// find all files
+	ctx, cancel := context.WithTimeout(context.Background(), kTimeout)
+	eg, eqctx := errgroup.WithContext(ctx)
+
+	start := time.Now()
+	if hashes, err := BuildLocalFileHashes(eqctx, dir, excludeDirs, excludeFiles, eg); err == nil {
 		elapsed := time.Since(start)
+
 		fmt.Println()
 		for i, h := range hashes {
-			fmt.Printf("(%4d) %s => %s\n", i+1, h.PathInsideDirectory(), h.AzureMd5())
+			fmt.Printf("(%4d) %s => %s\n", i+1, h.PathInsideDirectory(), h.Base64Md5())
 		}
 
 		fmt.Printf("Elapsed: %d ms\n", elapsed.Milliseconds())
+
 	} else {
-		panic(fmt.Errorf("failed to generate hashes for directory '%s': %w", root, err))
+		fmt.Println(err)
 	}
 
 	fmt.Println()
