@@ -158,7 +158,6 @@ func main() {
 	excludeFiles := mapset.NewSet[string]()
 	excludeFiles.Add(".DS_Store")
 
-	// find all files
 	ctx, cancel := context.WithTimeout(context.Background(), kTimeout)
 	eg, eqctx := errgroup.WithContext(ctx)
 
