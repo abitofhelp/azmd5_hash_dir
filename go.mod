@@ -2,4 +2,7 @@ module github.com/abitofhelp/azmd5_hash_dir
 
 go 1.21
 
-require github.com/deckarep/golang-set/v2 v2.6.0
+require (
+	github.com/deckarep/golang-set/v2 v2.6.0
+	golang.org/x/sync v0.6.0
+)

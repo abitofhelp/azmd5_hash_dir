@@ -27,9 +27,11 @@ func GenMd5HashAsBinary(filePath string) ([]byte, error) {
 }
 
 // GenMd5HashAsHex calculates the binary MD5 hash and encodes that value to a hex string.
+//
+//goland:noinspection GoUnusedExportedFunction
 func GenMd5HashAsHex(filePath string) (string, error) {
 	if md5Hash, err := GenMd5HashAsBinary(filePath); err == nil {
-		return hex.EncodeToString([]byte(md5Hash)), nil
+		return hex.EncodeToString(md5Hash), nil
 	} else {
 		return EmptyString, fmt.Errorf("failed to generate a MD5 hash as hex for '%s': %w", filePath, err)
 	}
@@ -39,7 +41,7 @@ func GenMd5HashAsHex(filePath string) (string, error) {
 // which is how Azure Blob Storage records its Content-MD5 values.
 func GenMd5HashAsBase64(filePath string) (string, error) {
 	if md5Hash, err := GenMd5HashAsBinary(filePath); err == nil {
-		return b64.StdEncoding.EncodeToString([]byte(md5Hash)), nil
+		return b64.StdEncoding.EncodeToString(md5Hash), nil
 	} else {
 		return EmptyString, fmt.Errorf("failed to generate a MD5 hash as base64 for '%s': %w", filePath, err)
 	}
